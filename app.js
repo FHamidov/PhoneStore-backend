@@ -19,7 +19,25 @@ app.get('/brands', async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 });
+app.get('/sales', async (req, res) => {
+    try {
+        const brands = await Brand.find();
 
+        const salesReport = brands.map(brand => {
+            return {
+                brand: brand.name,
+                models: brand.models.map(model => ({
+                    model: model.model,
+                    soldQuantity: model.soldQuantity
+                }))
+            };
+        });
+
+        res.json(salesReport);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
 app.post('/brands', async (req, res) => {
     const { name, models } = req.body;
 
