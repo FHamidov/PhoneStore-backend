@@ -73,6 +73,35 @@ app.get('/sellers', async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 });
+app.get('/sellers/sales', async (req, res) => {
+    try {
+        const sellers = await Seller.find();
+        const salesData = await Promise.all(sellers.map(async seller => {
+            const soldPhones = seller.soldPhones || [];
+            const brandsWithSales = {};
+
+            for (const sale of soldPhones) {
+                const brand = await Brand.findById(sale.brandId);
+                if (brand) {
+                    if (!brandsWithSales[brand.name]) {
+                        brandsWithSales[brand.name] = {};
+                    }
+                    if (!brandsWithSales[brand.name][sale.model]) {
+                        brandsWithSales[brand.name][sale.model] = 0;
+                    }
+                    brandsWithSales[brand.name][sale.model] += sale.quantity;
+                }
+            }
+
+            return { seller: seller.name, sales: brandsWithSales };
+        }));
+
+        res.json(salesData);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 
 app.post('/sellers', async (req, res) => {
     const { name } = req.body;
@@ -127,6 +156,79 @@ app.post('/sales', async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 });
+
+app.get('/totalPhones', async (req, res) => {
+    try {
+        const brands = await Brand.find();
+        const totalPhones = brands.reduce((total, brand) => {
+            return total + brand.models.reduce((sum, model) => sum + model.quantityInStock, 0);
+        }, 0);
+
+        res.json({ totalPhones });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+app.get('/sellers/sales/models', async (req, res) => {
+    const { brandId, model } = req.query; // modelName əvəzinə model istifadə edin
+
+    console.log("Received brandId:", brandId);
+    console.log("Received model:", model); // modelName əvəzinə model
+
+    try {
+        const sellers = await Seller.find();
+        console.log("Found sellers:", sellers);
+        
+        // `brandId`-nı `ObjectId`-ya çevirin
+        const brandObjectId = new mongoose.Types.ObjectId(brandId);
+
+        const salesData = await Promise.all(sellers.map(async (seller) => {
+            const soldPhones = seller.soldPhones || [];
+            console.log("Sold phones data for seller:", seller.name, soldPhones);
+
+            const brandData = await Promise.all(soldPhones.map(async (sale) => {
+                // `ObjectId`-ya çevrilmiş `brandId`-nı yoxlayırıq
+                if (sale.brandId.equals(brandObjectId) && sale.model === model) { // modelName əvəzinə model istifadə edin
+                    return { seller: seller.name, model: sale.model, quantity: sale.quantity };
+                }
+                return null;
+            }));
+
+            return brandData.filter((data) => data !== null);
+        }));
+
+        const filteredSalesData = salesData.flat();
+
+        if (filteredSalesData.length === 0) {
+            return res.status(404).json({ message: 'No sales data found for the specified model and brand.' });
+        }
+
+        console.log("Filtered sales data:", filteredSalesData);
+        res.json(filteredSalesData);
+    } catch (error) {
+        console.error("Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
+app.get('/brandPhoneCounts', async (req, res) => {
+    try {
+        const brands = await Brand.find();
+        
+        // Hər markanın telefon sayını toplamaq üçün xəritə yarat
+        const brandPhoneCounts = brands.reduce((acc, brand) => {
+            // Markanın bütün modellərindən quantityInStock-u toplayırıq
+            const totalPhones = brand.models.reduce((sum, model) => sum + model.quantityInStock, 0);
+            acc[brand.name] = totalPhones; // Markanın adı ilə telefon sayını xəritəyə əlavə et
+            return acc;
+        }, {});
+        
+        res.json(brandPhoneCounts);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 
 const PORT = 3000;
 app.listen(PORT, () => {
